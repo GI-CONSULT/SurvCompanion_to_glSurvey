@@ -55,19 +55,26 @@ function parseCSV(csvText) {
 
   if (result.errors.length > 0 && result.data.length === 0) {
     errors.push(`CSV-Parsing-Fehler: ${result.errors[0].message}`);
-    return { data: [], errors };
+    return { data: [], errors, hints: [] };
   }
 
-  const required = ['punkt_id', 'gps_latitude', 'gps_longitude', 'hoehe', 'art'];
+  const critical = ['punkt_id', 'gps_latitude', 'gps_longitude'];
   const headers = result.meta.fields || [];
-  const missing = required.filter(h => !headers.includes(h));
+  const missing = critical.filter(h => !headers.includes(h));
   if (missing.length > 0) {
-    errors.push(`Fehlende Spalten: ${missing.join(', ')}`);
-    return { data: [], errors };
+    errors.push(`Fehlende Pflichtspalten: ${missing.join(', ')}. Ist das eine SurvComp-Datei?`);
+    return { data: [], errors, hints: [] };
+  }
+
+  const hints = [];
+  const optional = ['hoehe', 'art', 'bemerkungen'];
+  const missingOptional = optional.filter(h => !headers.includes(h));
+  if (missingOptional.length > 0) {
+    hints.push(`Optionale Spalten fehlen: ${missingOptional.join(', ')} — Standardwerte werden verwendet.`);
   }
 
   const data = result.data.filter(row => row.punkt_id && row.punkt_id.trim());
-  return { data, errors };
+  return { data, errors, hints };
 }
 
 /**
@@ -91,6 +98,7 @@ function convertPoints(rows, epsgCode) {
     const lat = parseFloat(row.gps_latitude);
     const lon = parseFloat(row.gps_longitude);
     const hoehe = row.hoehe ? parseFloat(row.hoehe) : NaN;
+    const artRaw = (row.art || '').trim();
     const bemerkung = (row.bemerkungen || '').trim().replace(/\r?\n/g, ' ');
 
     if (isNaN(lat) || isNaN(lon)) {
@@ -100,7 +108,7 @@ function convertPoints(rows, epsgCode) {
         Rechtswert: '',
         Hochwert: '',
         'Höhe': !isNaN(hoehe) ? hoehe.toFixed(3) : '',
-        Art: row.art || '',
+        Art: artRaw,
         Bemerkung: bemerkung,
       });
       continue;
@@ -113,7 +121,7 @@ function convertPoints(rows, epsgCode) {
       Rechtswert: easting.toFixed(3),
       Hochwert: northing.toFixed(3),
       'Höhe': !isNaN(hoehe) ? hoehe.toFixed(3) : '',
-      Art: row.art || '',
+      Art: artRaw,
       Bemerkung: bemerkung,
     });
   }

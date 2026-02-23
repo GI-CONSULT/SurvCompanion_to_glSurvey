@@ -50,10 +50,14 @@ async function run() {
     const csvText = fs.readFileSync(inputPath, 'utf-8');
 
     // Parse CSV
-    const { data, errors } = parseCSV(csvText);
+    const { data, errors, hints } = parseCSV(csvText);
     if (errors.length > 0) {
       core.setFailed(errors.join('; '));
       return;
+    }
+
+    if (hints.length > 0) {
+      hints.forEach(h => core.warning(`Hinweis: ${h}`));
     }
 
     core.info(`${data.length} Vermessungspunkte eingelesen.`);

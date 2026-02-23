@@ -790,13 +790,20 @@
         return;
       }
 
-      // Validate required columns
-      const required = ['punkt_id', 'gps_latitude', 'gps_longitude', 'hoehe', 'art'];
+      // Validate critical columns (needed for coordinate transformation)
+      const critical = ['punkt_id', 'gps_latitude', 'gps_longitude'];
       const headers = result.meta.fields || [];
-      const missing = required.filter(h => !headers.includes(h));
+      const missing = critical.filter(h => !headers.includes(h));
       if (missing.length > 0) {
-        showAlert(`Fehlende Spalten: ${missing.join(', ')}. Ist das eine SurvComp-Datei?`);
+        showAlert(`Fehlende Pflichtspalten: ${missing.join(', ')}. Ist das eine SurvComp-Datei?`);
         return;
+      }
+
+      // Hint about missing optional columns
+      const optional = ['hoehe', 'art', 'bemerkungen'];
+      const missingOpt = optional.filter(h => !headers.includes(h));
+      if (missingOpt.length > 0) {
+        showAlert(`Hinweis: Spalten ${missingOpt.join(', ')} fehlen — Standardwerte werden verwendet.`, 'warning');
       }
 
       parsedData = result.data.filter(row => row.punkt_id && row.punkt_id.trim());

@@ -60,11 +60,15 @@ if (!fs.existsSync(inputFile)) {
 }
 
 const csvText = fs.readFileSync(inputFile, 'utf-8');
-const { data, errors } = parseCSV(csvText);
+const { data, errors, hints } = parseCSV(csvText);
 
 if (errors.length > 0) {
   console.error('Fehler:', errors.join('; '));
   process.exit(1);
+}
+
+if (hints.length > 0) {
+  hints.forEach(h => console.warn(`Hinweis: ${h}`));
 }
 
 console.log(`${data.length} Vermessungspunkte eingelesen.`);

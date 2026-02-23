@@ -1,5 +1,8 @@
 {
   "yaml.schemas": {
     "https://json.schemastore.org/github-action.json": "action.yml"
+  },
+  "chat.tools.terminal.autoApprove": {
+    "git pull": true
   }
 }

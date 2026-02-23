@@ -24,17 +24,23 @@ Konvertiert Vermessungspunkte aus **SurveyCompanion (SurvComp)**-CSV-Exporten vo
 
 ## Eingabeformat (SurvComp CSV)
 
-Die CSV-Datei muss mindestens folgende Spalten enthalten:
+Die Spalten werden anhand der **Kopfzeile** erkannt — Reihenfolge und Anzahl zusätzlicher Spalten spielen keine Rolle. Auch ältere CSV-Versionen mit abweichendem Spaltenaufbau werden unterstützt, solange die Pflichtspalten vorhanden sind.
+
+**Pflichtspalten** (ohne diese bricht der Import ab):
 
 | Spalte | Beschreibung |
 |--------|-------------|
 | `punkt_id` | Eindeutige Punktkennung |
 | `gps_latitude` | Breitengrad (WGS 84, Dezimalgrad) |
 | `gps_longitude` | Längengrad (WGS 84, Dezimalgrad) |
+
+**Optionale Spalten** (fehlende Spalten werden mit Leerstring/Standardwert befüllt):
+
+| Spalte | Beschreibung |
+|--------|-------------|
 | `hoehe` | Höhe in Metern |
 | `art` | Punktart (z. B. PS4, LHP, TP) |
-
-Optional: `bemerkungen` – wird als Freitext übernommen.
+| `bemerkungen` | Freitext-Bemerkungen |
 
 ## Ausgabeformat (gl-Survey CSV)
 
