@@ -237,6 +237,54 @@
     .delta-warn { color: var(--warning); font-weight: 600; }
     .delta-err  { color: var(--danger);  font-weight: 600; }
 
+    /* ── Code conversion ── */
+    .code-select {
+      padding: 0.2rem 0.4rem;
+      font-size: 0.8rem;
+      font-family: inherit;
+      border: 1.5px solid var(--border);
+      border-radius: 4px;
+      background: var(--surface);
+      color: var(--text);
+      cursor: pointer;
+    }
+    .code-select:focus { border-color: var(--border-focus); outline: none; }
+    .art-original { color: var(--text-muted); font-size: 0.78rem; }
+    .toggle-group {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-top: 0.25rem;
+    }
+    .toggle-group input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      accent-color: var(--primary);
+      cursor: pointer;
+    }
+    .toggle-group label {
+      font-size: 0.875rem;
+      font-weight: 500;
+      color: var(--text);
+      cursor: pointer;
+    }
+    .code-legend {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      margin-top: 0.35rem;
+      line-height: 1.5;
+    }
+    .sep-conflict {
+      display: none;
+      font-size: 0.8rem;
+      color: var(--danger);
+      margin-top: 0.35rem;
+      padding: 0.35rem 0.65rem;
+      background: var(--danger-bg);
+      border-radius: var(--radius-sm);
+    }
+    .sep-conflict.visible { display: block; }
+
     /* ── Buttons ── */
     .btn {
       display: inline-flex;
@@ -528,6 +576,26 @@
       </div>
 
       <div class="form-group">
+        <label class="form-label" for="decimalSelect">Dezimaltrennzeichen</label>
+        <select class="form-select" id="decimalSelect">
+          <option value="." selected>Punkt ( . )</option>
+          <option value=",">Komma ( , )</option>
+        </select>
+        <div class="sep-conflict" id="sepConflict">⚠ Spalten- und Dezimaltrennzeichen sind identisch! Beim Export wird das Spaltentrennzeichen automatisch auf Semikolon umgestellt.</div>
+      </div>
+
+      <div class="form-group">
+        <div class="toggle-group">
+          <input type="checkbox" id="codeConvertToggle" checked>
+          <label for="codeConvertToggle">Punktcode-Konvertierung</label>
+        </div>
+        <div class="code-legend">
+          PS0→100 · PS1→101 · PS2→102 · PS3→103 · LHP→116<br>
+          PS4 / GVP / GVPV → 151, 153, 155, 171 <em>(wählbar pro Punkt)</em>
+        </div>
+      </div>
+
+      <div class="form-group">
         <button class="btn btn-primary" id="convertBtn" disabled>
           <span id="convertBtnText">Konvertieren</span>
         </button>
@@ -607,6 +675,18 @@
     proj4.defs(`EPSG:${code}`, def.proj4);
   }
 
+  // ── Point code mapping (Art → numeric code for gl-Survey) ──
+  const CODE_MAP = {
+    'PS0':  [100],
+    'PS1':  [101],
+    'PS2':  [102],
+    'PS3':  [103],
+    'PS4':  [151, 153, 155, 171],
+    'LHP':  [116],
+    'GVP':  [151, 153, 155, 171],
+    'GVPV': [151, 153, 155, 171],
+  };
+
   // ── State ──
   let parsedData = null;
   let convertedData = null;
@@ -628,6 +708,9 @@
   const tableBody = $('tableBody');
   const downloadBtn = $('downloadBtn');
   const detectZoneBtn = $('detectZoneBtn');
+  const decimalSelect = $('decimalSelect');
+  const codeConvertToggle = $('codeConvertToggle');
+  const sepConflict = $('sepConflict');
   const alertEl = $('alert');
   const alertText = $('alertText');
 
@@ -771,6 +854,72 @@
     }
   });
 
+  // ── Separator conflict detection ──
+  function checkSepConflict() {
+    const colSep = separatorSelect.value;
+    const decSep = decimalSelect.value;
+    if (colSep === ',' && decSep === ',') {
+      sepConflict.classList.add('visible');
+    } else {
+      sepConflict.classList.remove('visible');
+    }
+  }
+  separatorSelect.addEventListener('change', checkSepConflict);
+  decimalSelect.addEventListener('change', checkSepConflict);
+
+  // ── Code conversion toggle → re-render table ──
+  codeConvertToggle.addEventListener('change', () => {
+    if (convertedData) renderTable(convertedData);
+  });
+
+  // ── Table rendering (extracted so code-toggle can re-render) ──
+  function renderTable(results) {
+    const useCode = codeConvertToggle.checked;
+    const fragment = document.createDocumentFragment();
+    results.forEach((r, i) => {
+      const tr = document.createElement('tr');
+      if (r.warn) tr.style.opacity = '0.5';
+
+      let artHtml;
+      if (useCode && r.codeOptions) {
+        if (r.codeOptions.length === 1) {
+          artHtml = `<span title="${esc(r.art)} → ${r.codeOptions[0]}">${r.codeOptions[0]}</span>`;
+        } else {
+          const opts = r.codeOptions.map(c =>
+            `<option value="${c}"${c === r.selectedCode ? ' selected' : ''}>${c}</option>`
+          ).join('');
+          artHtml = `<span class="art-original">${esc(r.art)} →</span> <select class="code-select" data-idx="${i}">${opts}</select>`;
+        }
+      } else {
+        artHtml = esc(r.art);
+      }
+
+      tr.innerHTML = `
+        <td class="num">${i + 1}</td>
+        <td><strong>${esc(r.punktnummer)}</strong></td>
+        <td class="num">${esc(r.rechtswert)}</td>
+        <td class="num">${esc(r.hochwert)}</td>
+        <td class="num">${esc(r.hoehe)}</td>
+        <td>${artHtml}</td>
+        <td>${esc(r.bemerkung)}</td>
+        <td class="num">${r.delta != null ? `<span class="${r.delta < 1 ? 'delta-ok' : r.delta < 10 ? 'delta-warn' : 'delta-err'}">${r.delta.toFixed(3)}</span>` : ''}</td>
+      `;
+      fragment.appendChild(tr);
+    });
+    tableBody.innerHTML = '';
+    tableBody.appendChild(fragment);
+
+    // Bind dropdown change handlers for multi-code types
+    if (useCode) {
+      tableBody.querySelectorAll('.code-select').forEach(sel => {
+        sel.addEventListener('change', (e) => {
+          const idx = parseInt(e.target.dataset.idx);
+          results[idx].selectedCode = parseInt(e.target.value);
+        });
+      });
+    }
+  }
+
   // ── Conversion ──
   convertBtn.addEventListener('click', () => {
     if (!parsedData) return;
@@ -796,6 +945,10 @@
           const lon = parseFloat(row.gps_longitude);
           const hoehe = row.hoehe ? parseFloat(row.hoehe) : null;
           const bemerkung = (row.bemerkungen || '').trim().replace(/\r?\n/g, ' ');
+          const artRaw = (row.art || '').trim();
+          const artKey = artRaw.toUpperCase();
+          const codeOpts = CODE_MAP[artKey] || null;
+          const defaultCode = codeOpts ? codeOpts[codeOpts.length - 1] : null;
 
           if (isNaN(lat) || isNaN(lon)) {
             warnings++;
@@ -804,11 +957,13 @@
               rechtswert: '',
               hochwert: '',
               hoehe: hoehe != null && !isNaN(hoehe) ? hoehe : '',
-              art: row.art || '',
+              art: artRaw,
               bemerkung,
               warn: true,
               lat: null, lon: null,
               delta: null,
+              codeOptions: codeOpts,
+              selectedCode: defaultCode,
             });
             continue;
           }
@@ -829,11 +984,13 @@
             rechtswert: formatCoord(easting),
             hochwert: formatCoord(northing),
             hoehe: hoehe != null && !isNaN(hoehe) ? hoehe.toFixed(3) : '',
-            art: row.art || '',
+            art: artRaw,
             bemerkung,
             warn: false,
             lat, lon,
             delta: delta_mm,
+            codeOptions: codeOpts,
+            selectedCode: defaultCode,
           });
         }
 
@@ -860,25 +1017,8 @@
           })()}
         `;
 
-        // Render table
-        const fragment = document.createDocumentFragment();
-        results.forEach((r, i) => {
-          const tr = document.createElement('tr');
-          if (r.warn) tr.style.opacity = '0.5';
-          tr.innerHTML = `
-            <td class="num">${i + 1}</td>
-            <td><strong>${esc(r.punktnummer)}</strong></td>
-            <td class="num">${esc(r.rechtswert)}</td>
-            <td class="num">${esc(r.hochwert)}</td>
-            <td class="num">${esc(r.hoehe)}</td>
-            <td>${esc(r.art)}</td>
-            <td>${esc(r.bemerkung)}</td>
-            <td class="num">${r.delta != null ? `<span class="${r.delta < 1 ? 'delta-ok' : r.delta < 10 ? 'delta-warn' : 'delta-err'}">${r.delta.toFixed(3)}</span>` : ''}</td>
-          `;
-          fragment.appendChild(tr);
-        });
-        tableBody.innerHTML = '';
-        tableBody.appendChild(fragment);
+        // Render table (code conversion may add dropdowns)
+        renderTable(results);
 
         resultsSection.classList.add('visible');
         // Defer map render so browser has time to paint the (newly visible) container
@@ -960,7 +1100,7 @@
         <div class="popup-row"><span>Rechtswert</span><span>${esc(r.rechtswert)}</span></div>
         <div class="popup-row"><span>Hochwert</span><span>${esc(r.hochwert)}</span></div>
         ${r.hoehe ? `<div class="popup-row"><span>Höhe</span><span>${esc(r.hoehe)} m</span></div>` : ''}
-        <div class="popup-row"><span>Art</span><span>${esc(r.art)}</span></div>
+        <div class="popup-row"><span>Art</span><span>${esc(r.art)}${r.selectedCode != null ? ' → ' + r.selectedCode : ''}</span></div>
         ${r.bemerkung ? `<div class="popup-row"><span>Bemerkung</span><span>${esc(r.bemerkung)}</span></div>` : ''}
         ${r.delta != null ? `<div class="popup-row"><span>Δ Rücktransf.</span><span class="${r.delta < 1 ? 'delta-ok' : r.delta < 10 ? 'delta-warn' : 'delta-err'}">${r.delta.toFixed(3)} mm</span></div>` : ''}
         <div style="margin-top:6px;font-size:0.75rem;color:#94a3b8;">EPSG:${esc(epsgCode)} · Zone ${def.zone} · GPS: ${r.lat.toFixed(6)}°N, ${r.lon.toFixed(6)}°E</div>
@@ -975,18 +1115,30 @@
   downloadBtn.addEventListener('click', () => {
     if (!convertedData) return;
 
-    const sep = (() => {
+    let sep = (() => {
       const v = separatorSelect.value;
       if (v === '\\t') return '\t';
       if (v === ',') return ',';
-      return ';'; // default / whitelist fallback
+      return ';';
     })();
+    const decSep = decimalSelect.value;
+    const useCode = codeConvertToggle.checked;
+
+    // Auto-resolve conflict: comma as both column and decimal separator
+    if (sep === ',' && decSep === ',') sep = ';';
+
+    function fmtDec(val) {
+      const s = String(val ?? '');
+      return decSep === ',' ? s.replace(/\./g, ',') : s;
+    }
+
     const header = ['Punktnummer', 'Rechtswert', 'Hochwert', 'Höhe', 'Art', 'Bemerkung'].join(sep);
-    const rows = convertedData.map(r =>
-      [r.punktnummer, r.rechtswert, r.hochwert, r.hoehe, r.art, r.bemerkung]
+    const rows = convertedData.map(r => {
+      const artVal = useCode && r.selectedCode != null ? String(r.selectedCode) : r.art;
+      return [r.punktnummer, fmtDec(r.rechtswert), fmtDec(r.hochwert), fmtDec(r.hoehe), artVal, r.bemerkung]
         .map(v => escapeCSVField(v, sep))
-        .join(sep)
-    );
+        .join(sep);
+    });
 
     const bom = '\uFEFF';
     const csv = bom + header + '\r\n' + rows.join('\r\n') + '\r\n';
