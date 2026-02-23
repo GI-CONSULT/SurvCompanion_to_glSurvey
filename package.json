@@ -1,0 +1,24 @@
+{
+  "name": "survcomp-to-gl-survey",
+  "version": "1.0.0",
+  "description": "Konvertiert Vermessungspunkte von WGS 84 in Gauß-Krüger (DB_REF) Koordinaten für gl-Survey",
+  "main": "src/action.js",
+  "scripts": {
+    "build": "ncc build src/action.js -o dist",
+    "convert": "node src/cli.js"
+  },
+  "keywords": ["survey", "coordinate-conversion", "gauss-krueger", "wgs84", "db-ref"],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/GI-CONSULT/SurvCompanion_to_glSurvey.git"
+  },
+  "dependencies": {
+    "@actions/core": "^1.10.1",
+    "proj4": "^2.11.0",
+    "papaparse": "^5.4.1"
+  },
+  "devDependencies": {
+    "@vercel/ncc": "^0.38.1"
+  }
+}

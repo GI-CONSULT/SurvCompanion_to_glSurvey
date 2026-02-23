@@ -1,0 +1,38 @@
+name: 'SurvComp to gl-Survey Converter'
+description: 'Konvertiert Vermessungspunkte von WGS 84 (SurvComp) in Gauß-Krüger DB_REF Koordinaten für gl-Survey'
+author: 'rodemann'
+
+branding:
+  icon: 'map-pin'
+  color: 'blue'
+
+inputs:
+  input-file:
+    description: 'Pfad zur Eingabe-CSV-Datei (SurvComp-Export)'
+    required: true
+  output-file:
+    description: 'Pfad für die Ausgabe-CSV-Datei (gl-Survey-Format)'
+    required: true
+    default: 'output_glsurvey.csv'
+  epsg-code:
+    description: 'Ziel-EPSG-Code (5681–5685) oder "auto" für automatische Erkennung'
+    required: false
+    default: 'auto'
+  separator:
+    description: 'CSV-Trennzeichen für die Ausgabe (; oder , oder Tab)'
+    required: false
+    default: ';'
+
+outputs:
+  output-file:
+    description: 'Pfad zur erzeugten Ausgabe-CSV-Datei'
+  point-count:
+    description: 'Anzahl der konvertierten Punkte'
+  epsg-code:
+    description: 'Verwendeter EPSG-Code'
+  warnings:
+    description: 'Anzahl der Punkte ohne gültige Koordinaten'
+
+runs:
+  using: 'node20'
+  main: 'dist/index.js'

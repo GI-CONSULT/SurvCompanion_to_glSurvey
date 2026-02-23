@@ -1,0 +1,55 @@
+name: Vermessungspunkte konvertieren
+
+on:
+  push:
+    paths:
+      - '**.csv'
+  workflow_dispatch:
+    inputs:
+      epsg-code:
+        description: 'Ziel-EPSG-Code (5681–5685 oder auto)'
+        required: false
+        default: 'auto'
+        type: choice
+        options:
+          - auto
+          - '5681'
+          - '5682'
+          - '5683'
+          - '5684'
+          - '5685'
+
+jobs:
+  convert:
+    name: CSV konvertieren
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Repository auschecken
+        uses: actions/checkout@v4
+
+      - name: Node.js einrichten
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Abhängigkeiten installieren
+        run: npm ci
+
+      - name: Action bauen
+        run: npm run build
+
+      - name: Vermessungspunkte konvertieren
+        uses: GI-CONSULT/SurvCompanion_to_glSurvey@main
+        with:
+          input-file: 'vermessungspunkte.csv'
+          output-file: 'vermessungspunkte_glsurvey.csv'
+          epsg-code: ${{ github.event.inputs.epsg-code || 'auto' }}
+          separator: ';'
+
+      - name: Konvertierte Datei hochladen
+        uses: actions/upload-artifact@v4
+        with:
+          name: glsurvey-csv
+          path: vermessungspunkte_glsurvey.csv
+          retention-days: 30

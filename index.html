@@ -1,0 +1,764 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SurvComp → gl-Survey Konverter</title>
+  <script src="https://cdn.jsdelivr.net/npm/proj4@2.11.0/dist/proj4.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #f1f5f9;
+      --surface: #ffffff;
+      --primary: #1e40af;
+      --primary-hover: #1d4ed8;
+      --primary-light: #3b82f6;
+      --primary-bg: #eff6ff;
+      --success: #059669;
+      --success-bg: #ecfdf5;
+      --danger: #dc2626;
+      --danger-bg: #fef2f2;
+      --warning: #d97706;
+      --warning-bg: #fffbeb;
+      --text: #0f172a;
+      --text-secondary: #475569;
+      --text-muted: #94a3b8;
+      --border: #e2e8f0;
+      --border-focus: #93c5fd;
+      --radius: 12px;
+      --radius-sm: 8px;
+      --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
+      --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.08), 0 2px 4px -2px rgba(0,0,0,0.05);
+      --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.08), 0 4px 6px -4px rgba(0,0,0,0.03);
+      --transition: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+
+    /* ── Header ── */
+    .header {
+      background: linear-gradient(135deg, #0f2847 0%, #1e40af 50%, #2563eb 100%);
+      color: white;
+      padding: 2rem 2rem 2.5rem;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+    .header::after {
+      content: '';
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      height: 4px;
+      background: linear-gradient(90deg, #3b82f6, #06b6d4, #3b82f6);
+    }
+    .header h1 {
+      font-size: 1.75rem;
+      font-weight: 700;
+      letter-spacing: -0.025em;
+      margin-bottom: 0.25rem;
+    }
+    .header h1 span { color: #93c5fd; font-weight: 400; }
+    .header p {
+      font-size: 0.925rem;
+      color: #bfdbfe;
+      font-weight: 400;
+    }
+
+    /* ── Main Layout ── */
+    .main {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 2rem 1.5rem 3rem;
+    }
+
+    .config-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+    @media (max-width: 768px) {
+      .config-grid { grid-template-columns: 1fr; }
+    }
+
+    /* ── Card ── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 1.5rem;
+      transition: box-shadow var(--transition);
+    }
+    .card:hover { box-shadow: var(--shadow-md); }
+    .card-title {
+      font-size: 0.8rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-secondary);
+      margin-bottom: 1rem;
+    }
+
+    /* ── Upload Zone ── */
+    .upload-zone {
+      border: 2px dashed var(--border);
+      border-radius: var(--radius-sm);
+      padding: 2.5rem 1.5rem;
+      text-align: center;
+      cursor: pointer;
+      transition: all var(--transition);
+      position: relative;
+    }
+    .upload-zone:hover, .upload-zone.drag-over {
+      border-color: var(--primary-light);
+      background: var(--primary-bg);
+    }
+    .upload-zone.has-file {
+      border-color: var(--success);
+      background: var(--success-bg);
+      border-style: solid;
+    }
+    .upload-zone input[type="file"] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+    }
+    .upload-icon {
+      width: 48px;
+      height: 48px;
+      margin: 0 auto 0.75rem;
+      color: var(--text-muted);
+      transition: color var(--transition);
+    }
+    .upload-zone:hover .upload-icon,
+    .upload-zone.drag-over .upload-icon { color: var(--primary-light); }
+    .upload-zone.has-file .upload-icon { color: var(--success); }
+    .upload-text {
+      font-size: 0.95rem;
+      color: var(--text-secondary);
+    }
+    .upload-text strong { color: var(--primary); }
+    .upload-hint {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      margin-top: 0.35rem;
+    }
+    .file-info {
+      display: none;
+      align-items: center;
+      gap: 0.75rem;
+      margin-top: 1rem;
+      padding: 0.75rem 1rem;
+      background: var(--success-bg);
+      border-radius: var(--radius-sm);
+      font-size: 0.875rem;
+    }
+    .file-info.visible { display: flex; }
+    .file-info .name { font-weight: 600; color: var(--text); }
+    .file-info .meta { color: var(--text-secondary); }
+
+    /* ── Settings ── */
+    .form-group { margin-bottom: 1.25rem; }
+    .form-group:last-child { margin-bottom: 0; }
+    .form-label {
+      display: block;
+      font-size: 0.875rem;
+      font-weight: 500;
+      color: var(--text);
+      margin-bottom: 0.4rem;
+    }
+    .form-select {
+      width: 100%;
+      padding: 0.65rem 2.5rem 0.65rem 0.85rem;
+      font-size: 0.9rem;
+      font-family: inherit;
+      color: var(--text);
+      background: var(--surface);
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius-sm);
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%2364748b' viewBox='0 0 16 16'%3E%3Cpath d='M4.646 5.646a.5.5 0 0 1 .708 0L8 8.293l2.646-2.647a.5.5 0 0 1 .708.708l-3 3a.5.5 0 0 1-.708 0l-3-3a.5.5 0 0 1 0-.708z'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 0.75rem center;
+      transition: border-color var(--transition), box-shadow var(--transition);
+      cursor: pointer;
+    }
+    .form-select:focus {
+      outline: none;
+      border-color: var(--border-focus);
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+    }
+    .zone-hint {
+      display: none;
+      font-size: 0.8rem;
+      color: var(--primary);
+      margin-top: 0.4rem;
+      padding: 0.4rem 0.65rem;
+      background: var(--primary-bg);
+      border-radius: var(--radius-sm);
+    }
+    .zone-hint.visible { display: block; }
+
+    /* ── Buttons ── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      padding: 0.7rem 1.5rem;
+      font-size: 0.925rem;
+      font-weight: 600;
+      font-family: inherit;
+      border: none;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      transition: all var(--transition);
+      text-decoration: none;
+    }
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .btn-primary {
+      width: 100%;
+      color: white;
+      background: linear-gradient(135deg, var(--primary), var(--primary-hover));
+      box-shadow: 0 2px 4px rgba(30, 64, 175, 0.25);
+    }
+    .btn-primary:hover:not(:disabled) {
+      background: linear-gradient(135deg, var(--primary-hover), #1e3a8a);
+      box-shadow: 0 4px 8px rgba(30, 64, 175, 0.35);
+      transform: translateY(-1px);
+    }
+    .btn-primary:active:not(:disabled) { transform: translateY(0); }
+    .btn-success {
+      color: white;
+      background: linear-gradient(135deg, var(--success), #047857);
+      box-shadow: 0 2px 4px rgba(5, 150, 105, 0.25);
+      padding: 0.85rem 2rem;
+      font-size: 1rem;
+    }
+    .btn-success:hover {
+      box-shadow: 0 4px 8px rgba(5, 150, 105, 0.35);
+      transform: translateY(-1px);
+    }
+
+    /* ── Spinner ── */
+    .spinner {
+      width: 18px;
+      height: 18px;
+      border: 2.5px solid rgba(255,255,255,0.3);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Results ── */
+    .results-section {
+      display: none;
+      animation: fadeIn 0.35s ease;
+    }
+    .results-section.visible { display: block; }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(12px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .stats-bar {
+      display: flex;
+      gap: 1rem;
+      margin-bottom: 1rem;
+      flex-wrap: wrap;
+    }
+    .stat-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.4rem 0.85rem;
+      background: var(--primary-bg);
+      color: var(--primary);
+      border-radius: 999px;
+      font-size: 0.825rem;
+      font-weight: 600;
+    }
+    .stat-chip svg { width: 14px; height: 14px; }
+
+    .table-card {
+      overflow: hidden;
+      padding: 0;
+    }
+    .table-wrapper {
+      overflow-x: auto;
+      max-height: 520px;
+      overflow-y: auto;
+    }
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+      white-space: nowrap;
+    }
+    .data-table thead {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+    }
+    .data-table th {
+      background: #f8fafc;
+      color: var(--text-secondary);
+      font-weight: 600;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding: 0.75rem 1rem;
+      text-align: left;
+      border-bottom: 2px solid var(--border);
+    }
+    .data-table td {
+      padding: 0.6rem 1rem;
+      border-bottom: 1px solid #f1f5f9;
+      color: var(--text);
+    }
+    .data-table tbody tr:hover { background: #f8fafc; }
+    .data-table tbody tr:nth-child(even) { background: #fafbfc; }
+    .data-table tbody tr:nth-child(even):hover { background: #f1f5f9; }
+    .data-table .num { font-variant-numeric: tabular-nums; font-family: 'SF Mono', 'Cascadia Code', 'Consolas', monospace; font-size: 0.825rem; }
+
+    .actions-bar {
+      display: flex;
+      justify-content: center;
+      gap: 1rem;
+      margin-top: 1.5rem;
+    }
+
+    /* ── Alerts ── */
+    .alert {
+      display: none;
+      padding: 0.85rem 1.15rem;
+      border-radius: var(--radius-sm);
+      font-size: 0.875rem;
+      margin-bottom: 1.25rem;
+      border: 1px solid;
+    }
+    .alert.visible { display: flex; align-items: center; gap: 0.5rem; }
+    .alert-error {
+      background: var(--danger-bg);
+      border-color: #fecaca;
+      color: var(--danger);
+    }
+    .alert-warning {
+      background: var(--warning-bg);
+      border-color: #fde68a;
+      color: var(--warning);
+    }
+
+    /* ── Footer ── */
+    .footer {
+      text-align: center;
+      padding: 1.5rem;
+      color: var(--text-muted);
+      font-size: 0.8rem;
+    }
+    .footer a { color: var(--primary-light); text-decoration: none; }
+    .footer a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+
+<header class="header">
+  <h1>SurvComp <span>→</span> gl-Survey</h1>
+  <p>Koordinatenkonverter &middot; WGS 84 → Gauß-Krüger (DB_REF)</p>
+</header>
+
+<main class="main">
+  <div id="alert" class="alert" role="alert">
+    <span id="alertText"></span>
+  </div>
+
+  <div class="config-grid">
+    <!-- Upload Card -->
+    <div class="card">
+      <div class="card-title">1. CSV-Datei wählen</div>
+      <div class="upload-zone" id="uploadZone">
+        <input type="file" id="fileInput" accept=".csv,text/csv" title="CSV-Datei auswählen" aria-label="CSV-Datei auswählen">
+        <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="17 8 12 3 7 8"/>
+          <line x1="12" y1="3" x2="12" y2="15"/>
+        </svg>
+        <div class="upload-text"><strong>CSV-Datei</strong> hier ablegen oder klicken</div>
+        <div class="upload-hint">Erwartet: vermessungspunkte.csv aus SurvComp</div>
+      </div>
+      <div class="file-info" id="fileInfo">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+        <div>
+          <div class="name" id="fileName"></div>
+          <div class="meta" id="fileMeta"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Settings Card -->
+    <div class="card">
+      <div class="card-title">2. Zielkoordinatensystem</div>
+      <div class="form-group">
+        <label class="form-label" for="epsgSelect">EPSG-Code / GK-Zone</label>
+        <select class="form-select" id="epsgSelect">
+          <option value="5681">EPSG:5681 — DB_REF / GK Zone 2 (Mittelmeridian 6°)</option>
+          <option value="5682" selected>EPSG:5682 — DB_REF / GK Zone 3 (Mittelmeridian 9°)</option>
+          <option value="5683">EPSG:5683 — DB_REF / GK Zone 4 (Mittelmeridian 12°)</option>
+          <option value="5684">EPSG:5684 — DB_REF / GK Zone 5 (Mittelmeridian 15°)</option>
+          <option value="5685">EPSG:5685 — DB_REF / GK Zone 6 (Mittelmeridian 18°)</option>
+        </select>
+        <div class="zone-hint" id="zoneHint"></div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="separatorSelect">CSV-Trennzeichen</label>
+        <select class="form-select" id="separatorSelect">
+          <option value=";" selected>Semikolon ( ; )</option>
+          <option value=",">Komma ( , )</option>
+          <option value="\t">Tabulator</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <button class="btn btn-primary" id="convertBtn" disabled>
+          <span id="convertBtnText">Konvertieren</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Results -->
+  <div class="results-section" id="resultsSection">
+    <div class="stats-bar" id="statsBar"></div>
+
+    <div class="card table-card">
+      <div class="table-wrapper">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Punktnummer</th>
+              <th>Rechtswert</th>
+              <th>Hochwert</th>
+              <th>Höhe</th>
+              <th>Art</th>
+              <th>Bemerkung</th>
+            </tr>
+          </thead>
+          <tbody id="tableBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="actions-bar">
+      <button class="btn btn-success" id="downloadBtn">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="7 10 12 15 17 10"/>
+          <line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+        CSV herunterladen
+      </button>
+    </div>
+  </div>
+</main>
+
+<footer class="footer">
+  <a href="https://github.com/GI-CONSULT/SurvCompanion_to_glSurvey" target="_blank" rel="noopener">SurvComp → gl-Survey Konverter</a> &middot; Koordinatentransformation via <a href="https://github.com/proj4js/proj4js" target="_blank" rel="noopener">proj4js</a>
+</footer>
+
+<script>
+(() => {
+  'use strict';
+
+  // ── Proj4 Definitions (DB_REF / 3-degree Gauss-Krüger) ──
+  const EPSG_DEFS = {
+    5681: { zone: 2, cm: 6,  proj4: '+proj=tmerc +lat_0=0 +lon_0=6  +k=1 +x_0=2500000 +y_0=0 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs' },
+    5682: { zone: 3, cm: 9,  proj4: '+proj=tmerc +lat_0=0 +lon_0=9  +k=1 +x_0=3500000 +y_0=0 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs' },
+    5683: { zone: 4, cm: 12, proj4: '+proj=tmerc +lat_0=0 +lon_0=12 +k=1 +x_0=4500000 +y_0=0 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs' },
+    5684: { zone: 5, cm: 15, proj4: '+proj=tmerc +lat_0=0 +lon_0=15 +k=1 +x_0=5500000 +y_0=0 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs' },
+    5685: { zone: 6, cm: 18, proj4: '+proj=tmerc +lat_0=0 +lon_0=18 +k=1 +x_0=6500000 +y_0=0 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs' },
+  };
+
+  // Register all EPSG codes with proj4
+  for (const [code, def] of Object.entries(EPSG_DEFS)) {
+    proj4.defs(`EPSG:${code}`, def.proj4);
+  }
+
+  // ── State ──
+  let parsedData = null;
+  let convertedData = null;
+
+  // ── DOM References ──
+  const $ = id => document.getElementById(id);
+  const uploadZone = $('uploadZone');
+  const fileInput = $('fileInput');
+  const fileInfo = $('fileInfo');
+  const fileName = $('fileName');
+  const fileMeta = $('fileMeta');
+  const epsgSelect = $('epsgSelect');
+  const separatorSelect = $('separatorSelect');
+  const zoneHint = $('zoneHint');
+  const convertBtn = $('convertBtn');
+  const convertBtnText = $('convertBtnText');
+  const resultsSection = $('resultsSection');
+  const statsBar = $('statsBar');
+  const tableBody = $('tableBody');
+  const downloadBtn = $('downloadBtn');
+  const alertEl = $('alert');
+  const alertText = $('alertText');
+
+  // ── Helpers ──
+  function showAlert(msg, type = 'error') {
+    alertEl.className = `alert alert-${type} visible`;
+    alertText.textContent = msg;
+    setTimeout(() => { alertEl.classList.remove('visible'); }, 8000);
+  }
+
+  function hideAlert() {
+    alertEl.classList.remove('visible');
+  }
+
+  function detectBestZone(rows) {
+    let sumLon = 0, count = 0;
+    for (const row of rows) {
+      const lon = parseFloat(row.gps_longitude);
+      if (!isNaN(lon)) { sumLon += lon; count++; }
+    }
+    if (count === 0) return null;
+    const avgLon = sumLon / count;
+    const zone = Math.round(avgLon / 3);
+    const epsg = 5679 + zone;
+    return EPSG_DEFS[epsg] ? { epsg, zone, avgLon: avgLon.toFixed(4) } : null;
+  }
+
+  function formatCoord(val) {
+    return val.toFixed(3);
+  }
+
+  function escapeCSVField(value, sep) {
+    const str = String(value ?? '');
+    if (str.includes(sep) || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+      return '"' + str.replace(/"/g, '""') + '"';
+    }
+    return str;
+  }
+
+  // ── File Upload ──
+  function handleFile(file) {
+    if (!file || !file.name.toLowerCase().endsWith('.csv')) {
+      showAlert('Bitte eine CSV-Datei auswählen.');
+      return;
+    }
+
+    hideAlert();
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const text = e.target.result;
+      const result = Papa.parse(text, {
+        header: true,
+        skipEmptyLines: 'greedy',
+        dynamicTyping: false,
+      });
+
+      if (result.errors.length > 0 && result.data.length === 0) {
+        showAlert('CSV konnte nicht gelesen werden: ' + result.errors[0].message);
+        return;
+      }
+
+      // Validate required columns
+      const required = ['punkt_id', 'gps_latitude', 'gps_longitude', 'hoehe', 'art'];
+      const headers = result.meta.fields || [];
+      const missing = required.filter(h => !headers.includes(h));
+      if (missing.length > 0) {
+        showAlert(`Fehlende Spalten: ${missing.join(', ')}. Ist das eine SurvComp-Datei?`);
+        return;
+      }
+
+      parsedData = result.data.filter(row => row.punkt_id && row.punkt_id.trim());
+
+      // Update UI
+      uploadZone.classList.add('has-file');
+      fileInfo.classList.add('visible');
+      fileName.textContent = file.name;
+      fileMeta.textContent = `${parsedData.length} Punkte erkannt · ${(file.size / 1024).toFixed(1)} KB`;
+      convertBtn.disabled = false;
+
+      // Auto-detect zone
+      const best = detectBestZone(parsedData);
+      if (best) {
+        epsgSelect.value = best.epsg;
+        zoneHint.textContent = `Empfohlen: EPSG:${best.epsg} (Zone ${best.zone}) — Durchschnittslänge ${best.avgLon}°`;
+        zoneHint.classList.add('visible');
+      }
+
+      // Reset results
+      resultsSection.classList.remove('visible');
+      convertedData = null;
+    };
+    reader.readAsText(file, 'UTF-8');
+  }
+
+  fileInput.addEventListener('change', (e) => {
+    handleFile(e.target.files[0]);
+  });
+
+  // Drag & Drop
+  uploadZone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    uploadZone.classList.add('drag-over');
+  });
+  uploadZone.addEventListener('dragleave', () => {
+    uploadZone.classList.remove('drag-over');
+  });
+  uploadZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    uploadZone.classList.remove('drag-over');
+    const file = e.dataTransfer.files[0];
+    handleFile(file);
+  });
+
+  // ── Conversion ──
+  convertBtn.addEventListener('click', () => {
+    if (!parsedData) return;
+    hideAlert();
+
+    const epsgCode = epsgSelect.value;
+    const targetProj = `EPSG:${epsgCode}`;
+    const def = EPSG_DEFS[epsgCode];
+
+    // Show spinner
+    convertBtnText.innerHTML = '<span class="spinner"></span> Konvertiere…';
+    convertBtn.disabled = true;
+
+    // Use requestAnimationFrame to allow UI update before heavy computation
+    requestAnimationFrame(() => {
+      try {
+        const results = [];
+        let warnings = 0;
+
+        for (const row of parsedData) {
+          const lat = parseFloat(row.gps_latitude);
+          const lon = parseFloat(row.gps_longitude);
+          const hoehe = row.hoehe ? parseFloat(row.hoehe) : null;
+          const bemerkung = (row.bemerkungen || '').trim().replace(/\r?\n/g, ' ');
+
+          if (isNaN(lat) || isNaN(lon)) {
+            warnings++;
+            results.push({
+              punktnummer: row.punkt_id,
+              rechtswert: '',
+              hochwert: '',
+              hoehe: hoehe != null && !isNaN(hoehe) ? hoehe : '',
+              art: row.art || '',
+              bemerkung,
+              warn: true,
+            });
+            continue;
+          }
+
+          const [easting, northing] = proj4('EPSG:4326', targetProj, [lon, lat]);
+
+          results.push({
+            punktnummer: row.punkt_id,
+            rechtswert: formatCoord(easting),
+            hochwert: formatCoord(northing),
+            hoehe: hoehe != null && !isNaN(hoehe) ? hoehe.toFixed(3) : '',
+            art: row.art || '',
+            bemerkung,
+            warn: false,
+          });
+        }
+
+        convertedData = results;
+
+        // Render stats
+        statsBar.innerHTML = `
+          <span class="stat-chip">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v4m0 12v4m-10-10h4m12 0h4"/></svg>
+            ${results.length} Punkte
+          </span>
+          <span class="stat-chip">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 3v18"/></svg>
+            EPSG:${epsgCode} · Zone ${def.zone} · CM ${def.cm}°
+          </span>
+          ${warnings > 0 ? `<span class="stat-chip" style="background:var(--warning-bg);color:var(--warning);">⚠ ${warnings} ohne Koordinaten</span>` : ''}
+        `;
+
+        // Render table
+        const fragment = document.createDocumentFragment();
+        results.forEach((r, i) => {
+          const tr = document.createElement('tr');
+          if (r.warn) tr.style.opacity = '0.5';
+          tr.innerHTML = `
+            <td class="num">${i + 1}</td>
+            <td><strong>${r.punktnummer}</strong></td>
+            <td class="num">${r.rechtswert}</td>
+            <td class="num">${r.hochwert}</td>
+            <td class="num">${r.hoehe}</td>
+            <td>${r.art}</td>
+            <td>${r.bemerkung}</td>
+          `;
+          fragment.appendChild(tr);
+        });
+        tableBody.innerHTML = '';
+        tableBody.appendChild(fragment);
+
+        resultsSection.classList.add('visible');
+
+        if (warnings > 0) {
+          showAlert(`${warnings} Punkt(e) hatten keine gültigen GPS-Koordinaten und wurden ohne Rechtswert/Hochwert übernommen.`, 'warning');
+        }
+      } catch (err) {
+        showAlert('Fehler bei der Konvertierung: ' + err.message);
+      } finally {
+        convertBtnText.textContent = 'Konvertieren';
+        convertBtn.disabled = false;
+      }
+    });
+  });
+
+  // ── Download ──
+  downloadBtn.addEventListener('click', () => {
+    if (!convertedData) return;
+
+    const sep = separatorSelect.value === '\\t' ? '\t' : separatorSelect.value;
+    const header = ['Punktnummer', 'Rechtswert', 'Hochwert', 'Höhe', 'Art', 'Bemerkung'].join(sep);
+    const rows = convertedData.map(r =>
+      [r.punktnummer, r.rechtswert, r.hochwert, r.hoehe, r.art, r.bemerkung]
+        .map(v => escapeCSVField(v, sep))
+        .join(sep)
+    );
+
+    const bom = '\uFEFF';
+    const csv = bom + header + '\r\n' + rows.join('\r\n') + '\r\n';
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `vermessungspunkte_EPSG${epsgSelect.value}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  });
+})();
+</script>
+
+</body>
+</html>
