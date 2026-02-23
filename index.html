@@ -212,6 +212,31 @@
     }
     .zone-hint.visible { display: block; }
 
+    /* ── Auto-detect zone button ── */
+    .btn-detect {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      margin-top: 0.5rem;
+      padding: 0.4rem 0.85rem;
+      font-size: 0.8rem;
+      font-weight: 500;
+      font-family: inherit;
+      color: var(--primary);
+      background: var(--primary-bg);
+      border: 1.5px solid var(--border-focus);
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      transition: all var(--transition);
+    }
+    .btn-detect:hover:not(:disabled) { background: #dbeafe; border-color: var(--primary); }
+    .btn-detect:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-detect svg { width: 14px; height: 14px; flex-shrink: 0; }
+    /* ── Delta / back-transform validation colours ── */
+    .delta-ok   { color: var(--success); font-weight: 600; }
+    .delta-warn { color: var(--warning); font-weight: 600; }
+    .delta-err  { color: var(--danger);  font-weight: 600; }
+
     /* ── Buttons ── */
     .btn {
       display: inline-flex;
@@ -486,6 +511,11 @@
           <option value="5685">EPSG:5685 — DB_REF / GK Zone 5 (Mittelmeridian 15°)</option>
         </select>
         <div class="zone-hint" id="zoneHint"></div>
+        <button class="btn-detect" id="detectZoneBtn" disabled
+          title="Optimale GK-Zone aus den WGS84-Koordinaten der geladenen Datei ermitteln">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/></svg>
+          Zone auto-ermitteln
+        </button>
       </div>
 
       <div class="form-group">
@@ -521,6 +551,7 @@
               <th>Höhe</th>
               <th>Art</th>
               <th>Bemerkung</th>
+              <th class="num" style="min-width:60px" title="Rücktransformationsfehler: GK→WGS84 vs. Eingabe (mm)">Δ mm</th>
             </tr>
           </thead>
           <tbody id="tableBody"></tbody>
@@ -596,6 +627,7 @@
   const statsBar = $('statsBar');
   const tableBody = $('tableBody');
   const downloadBtn = $('downloadBtn');
+  const detectZoneBtn = $('detectZoneBtn');
   const alertEl = $('alert');
   const alertText = $('alertText');
 
@@ -692,12 +724,13 @@
       fileName.textContent = file.name;
       fileMeta.textContent = `${parsedData.length} Punkte erkannt · ${(file.size / 1024).toFixed(1)} KB`;
       convertBtn.disabled = false;
+      detectZoneBtn.disabled = false;
 
       // Auto-detect zone
       const best = detectBestZone(parsedData);
       if (best) {
         epsgSelect.value = best.epsg;
-        zoneHint.textContent = `Empfohlen: EPSG:${best.epsg} (Zone ${best.zone}) — Durchschnittslänge ${best.avgLon}°`;
+        zoneHint.textContent = `Empfohlen: EPSG:${best.epsg} (Zone ${best.zone}) — Durchschnittslänge ${best.avgLon.toFixed(4)}°`;
         zoneHint.classList.add('visible');
       }
 
@@ -727,6 +760,17 @@
     handleFile(file);
   });
 
+  // ── Auto-detect zone button ──
+  detectZoneBtn.addEventListener('click', () => {
+    if (!parsedData) return;
+    const best = detectBestZone(parsedData);
+    if (best) {
+      epsgSelect.value = best.epsg;
+      zoneHint.textContent = `Empfohlen: EPSG:${best.epsg} (Zone ${best.zone}) — Durchschnittslänge ${best.avgLon.toFixed(4)}°`;
+      zoneHint.classList.add('visible');
+    }
+  });
+
   // ── Conversion ──
   convertBtn.addEventListener('click', () => {
     if (!parsedData) return;
@@ -745,6 +789,7 @@
       try {
         const results = [];
         let warnings = 0;
+        let maxDelta = 0, sumDelta = 0, deltaCount = 0;
 
         for (const row of parsedData) {
           const lat = parseFloat(row.gps_latitude);
@@ -763,11 +808,21 @@
               bemerkung,
               warn: true,
               lat: null, lon: null,
+              delta: null,
             });
             continue;
           }
 
           const [easting, northing] = proj4('EPSG:4326', targetProj, [lon, lat]);
+
+          // Back-transform: GK → WGS84, compare with original input
+          const [backLon, backLat] = proj4(targetProj, 'EPSG:4326', [easting, northing]);
+          const dN_m = (backLat - lat) * 111111;
+          const dE_m = (backLon - lon) * 111111 * Math.cos(lat * Math.PI / 180);
+          const delta_mm = Math.sqrt(dN_m * dN_m + dE_m * dE_m) * 1000;
+          maxDelta = Math.max(maxDelta, delta_mm);
+          sumDelta += delta_mm;
+          deltaCount++;
 
           results.push({
             punktnummer: row.punkt_id,
@@ -778,6 +833,7 @@
             bemerkung,
             warn: false,
             lat, lon,
+            delta: delta_mm,
           });
         }
 
@@ -794,6 +850,14 @@
             EPSG:${epsgCode} · Zone ${def.zone} · CM ${def.cm}°
           </span>
           ${warnings > 0 ? `<span class="stat-chip" style="background:var(--warning-bg);color:var(--warning);">⚠ ${warnings} ohne Koordinaten</span>` : ''}
+          ${(() => {
+            if (deltaCount === 0) return '';
+            const avg = sumDelta / deltaCount;
+            const cls = maxDelta < 1 ? 'success' : maxDelta < 10 ? 'warning' : 'danger';
+            const icon = maxDelta < 1 ? '✓' : maxDelta < 10 ? '⚠' : '✗';
+            const label = maxDelta < 1 ? 'Prüfung OK' : maxDelta < 10 ? 'Prüfung ⚠' : 'Prüfung ✗';
+            return `<span class="stat-chip" title="Rücktransformationsfehler max/⌀ — zeigt Transformationsgenauigkeit" style="background:var(--${cls}-bg);color:var(--${cls});">${icon} ${label} · max ${maxDelta.toFixed(3)} mm · ⌀ ${avg.toFixed(3)} mm</span>`;
+          })()}
         `;
 
         // Render table
@@ -809,6 +873,7 @@
             <td class="num">${esc(r.hoehe)}</td>
             <td>${esc(r.art)}</td>
             <td>${esc(r.bemerkung)}</td>
+            <td class="num">${r.delta != null ? `<span class="${r.delta < 1 ? 'delta-ok' : r.delta < 10 ? 'delta-warn' : 'delta-err'}">${r.delta.toFixed(3)}</span>` : ''}</td>
           `;
           fragment.appendChild(tr);
         });
@@ -816,7 +881,9 @@
         tableBody.appendChild(fragment);
 
         resultsSection.classList.add('visible');
-        renderMap(results, epsgCode);
+        // Defer map render so browser has time to paint the (newly visible) container
+        // before Leaflet measures its size
+        setTimeout(() => renderMap(results, epsgCode), 60);
 
         if (warnings > 0) {
           showAlert(`${warnings} Punkt(e) hatten keine gültigen GPS-Koordinaten und wurden ohne Rechtswert/Hochwert übernommen.`, 'warning');
@@ -870,6 +937,7 @@
 
   function renderMap(results, epsgCode) {
     initMap();
+    map.invalidateSize(); // ensure container size is re-measured after visibility change
     markersLayer.clearLayers();
 
     const validPoints = results.filter(r => r.lat !== null);
