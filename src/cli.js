@@ -34,6 +34,19 @@ for (let i = 1; i < args.length; i++) {
   else if (args[i] === '--sep' && args[i + 1]) { separator = args[++i]; }
 }
 
+// Validate inputs
+const validEpsg = ['auto', '5681', '5682', '5683', '5684', '5685'];
+if (!validEpsg.includes(epsgCode)) {
+  console.error(`Ungültiger EPSG-Code: "${epsgCode}". Erlaubt: auto, 5681–5685`);
+  process.exit(1);
+}
+
+const validSeparators = [';', ',', '\t'];
+if (!validSeparators.includes(separator)) {
+  console.error(`Ungültiges Trennzeichen: "${separator}". Erlaubt: ; , \\t`);
+  process.exit(1);
+}
+
 if (!outputFile) {
   const ext = path.extname(inputFile);
   const base = path.basename(inputFile, ext);

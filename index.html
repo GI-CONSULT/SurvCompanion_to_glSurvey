@@ -962,6 +962,7 @@
         ${r.hoehe ? `<div class="popup-row"><span>Höhe</span><span>${esc(r.hoehe)} m</span></div>` : ''}
         <div class="popup-row"><span>Art</span><span>${esc(r.art)}</span></div>
         ${r.bemerkung ? `<div class="popup-row"><span>Bemerkung</span><span>${esc(r.bemerkung)}</span></div>` : ''}
+        ${r.delta != null ? `<div class="popup-row"><span>Δ Rücktransf.</span><span class="${r.delta < 1 ? 'delta-ok' : r.delta < 10 ? 'delta-warn' : 'delta-err'}">${r.delta.toFixed(3)} mm</span></div>` : ''}
         <div style="margin-top:6px;font-size:0.75rem;color:#94a3b8;">EPSG:${esc(epsgCode)} · Zone ${def.zone} · GPS: ${r.lat.toFixed(6)}°N, ${r.lon.toFixed(6)}°E</div>
       `);
       L.marker([r.lat, r.lon], { icon }).addTo(markersLayer).bindPopup(popup);

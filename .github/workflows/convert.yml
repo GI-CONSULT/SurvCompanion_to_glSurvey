@@ -28,19 +28,8 @@ jobs:
       - name: Repository auschecken
         uses: actions/checkout@v4
 
-      - name: Node.js einrichten
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Abhängigkeiten installieren
-        run: npm ci
-
-      - name: Action bauen
-        run: npm run build
-
       - name: Vermessungspunkte konvertieren
-        uses: GI-CONSULT/SurvCompanion_to_glSurvey@main
+        uses: ./
         with:
           input-file: 'vermessungspunkte.csv'
           output-file: 'vermessungspunkte_glsurvey.csv'
