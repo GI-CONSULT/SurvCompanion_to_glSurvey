@@ -6,6 +6,8 @@
   <title>SurvComp → gl-Survey Konverter</title>
   <script src="https://cdn.jsdelivr.net/npm/proj4@2.11.0/dist/proj4.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.min.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -363,6 +365,67 @@
       color: var(--warning);
     }
 
+    /* ── Map ── */
+    .map-card {
+      margin-top: 1.5rem;
+    }
+    .map-card .card-title { padding: 1.25rem 1.5rem 0; }
+    .map-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1.25rem 1.5rem 0;
+      margin-bottom: 0.75rem;
+    }
+    .map-header .card-title { padding: 0; margin: 0; }
+    #mapContainer {
+      height: 480px;
+      border-radius: 0 0 var(--radius) var(--radius);
+      overflow: hidden;
+    }
+    .leaflet-popup-content-wrapper {
+      border-radius: var(--radius-sm);
+      box-shadow: var(--shadow-md);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 0.85rem;
+    }
+    .leaflet-popup-content { margin: 10px 14px; }
+    .popup-title {
+      font-weight: 700;
+      font-size: 0.9rem;
+      color: var(--primary);
+      margin-bottom: 6px;
+    }
+    .popup-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 1rem;
+      color: var(--text-secondary);
+      line-height: 1.7;
+    }
+    .popup-row span:last-child {
+      font-family: 'SF Mono', 'Cascadia Code', Consolas, monospace;
+      font-size: 0.8rem;
+      color: var(--text);
+    }
+    .map-tiles-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.35rem 0.75rem;
+      font-size: 0.78rem;
+      font-weight: 500;
+      font-family: inherit;
+      background: var(--surface);
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      color: var(--text-secondary);
+      transition: all var(--transition);
+    }
+    .map-tiles-btn:hover { border-color: var(--primary-light); color: var(--primary); }
+    .map-tiles-btn.active { background: var(--primary-bg); border-color: var(--primary-light); color: var(--primary); }
+
     /* ── Footer ── */
     .footer {
       text-align: center;
@@ -473,6 +536,19 @@
         </svg>
         CSV herunterladen
       </button>
+    </div>
+
+    <!-- Map Viewer -->
+    <div class="card map-card">
+      <div class="map-header">
+        <div class="card-title">Lageprüfung &mdash; Transformierte Punkte</div>
+        <div style="display:flex;gap:0.5rem;">
+          <button class="map-tiles-btn active" id="btnOsm">OSM</button>
+          <button class="map-tiles-btn" id="btnSat">Satellit</button>
+          <button class="map-tiles-btn" id="btnTopo">Topo</button>
+        </div>
+      </div>
+      <div id="mapContainer"></div>
     </div>
   </div>
 </main>
@@ -667,6 +743,7 @@
               art: row.art || '',
               bemerkung,
               warn: true,
+              lat: null, lon: null,
             });
             continue;
           }
@@ -681,6 +758,7 @@
             art: row.art || '',
             bemerkung,
             warn: false,
+            lat, lon,
           });
         }
 
@@ -719,6 +797,7 @@
         tableBody.appendChild(fragment);
 
         resultsSection.classList.add('visible');
+        renderMap(results, epsgCode);
 
         if (warnings > 0) {
           showAlert(`${warnings} Punkt(e) hatten keine gültigen GPS-Koordinaten und wurden ohne Rechtswert/Hochwert übernommen.`, 'warning');
@@ -731,6 +810,78 @@
       }
     });
   });
+
+  // ── Map ──
+  let map = null;
+  let markersLayer = null;
+  const tileLayers = {};
+
+  function initMap() {
+    if (map) return;
+    map = L.map('mapContainer', { zoomControl: true });
+
+    tileLayers.osm = L.tileLayer(
+      'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+      { attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" rel="noopener">OpenStreetMap</a> contributors', maxZoom: 20 }
+    ).addTo(map);
+
+    tileLayers.sat = L.tileLayer(
+      'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+      { attribution: '&copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP', maxZoom: 20 }
+    );
+
+    tileLayers.topo = L.tileLayer(
+      'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
+      { attribution: '&copy; <a href="https://opentopomap.org" rel="noopener">OpenTopoMap</a>', maxZoom: 17 }
+    );
+
+    markersLayer = L.layerGroup().addTo(map);
+
+    $('btnOsm').addEventListener('click', () => switchTiles('osm'));
+    $('btnSat').addEventListener('click', () => switchTiles('sat'));
+    $('btnTopo').addEventListener('click', () => switchTiles('topo'));
+  }
+
+  function switchTiles(name) {
+    Object.keys(tileLayers).forEach(k => map.removeLayer(tileLayers[k]));
+    tileLayers[name].addTo(map);
+    document.querySelectorAll('.map-tiles-btn').forEach(b => b.classList.remove('active'));
+    $('btn' + name.charAt(0).toUpperCase() + name.slice(1)).classList.add('active');
+  }
+
+  function renderMap(results, epsgCode) {
+    initMap();
+    markersLayer.clearLayers();
+
+    const validPoints = results.filter(r => r.lat !== null);
+    if (validPoints.length === 0) return;
+
+    const def = EPSG_DEFS[epsgCode];
+    const icon = L.divIcon({
+      className: '',
+      html: `<div style="width:10px;height:10px;border-radius:50%;background:#1e40af;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,0.4);"></div>`,
+      iconSize: [10, 10],
+      iconAnchor: [5, 5],
+      popupAnchor: [0, -8],
+    });
+
+    const bounds = [];
+    for (const r of validPoints) {
+      bounds.push([r.lat, r.lon]);
+      const popup = L.popup({ maxWidth: 260 }).setContent(`
+        <div class="popup-title">${r.punktnummer}</div>
+        <div class="popup-row"><span>Rechtswert</span><span>${r.rechtswert}</span></div>
+        <div class="popup-row"><span>Hochwert</span><span>${r.hochwert}</span></div>
+        ${r.hoehe ? `<div class="popup-row"><span>Höhe</span><span>${r.hoehe} m</span></div>` : ''}
+        <div class="popup-row"><span>Art</span><span>${r.art}</span></div>
+        ${r.bemerkung ? `<div class="popup-row"><span>Bemerkung</span><span>${r.bemerkung}</span></div>` : ''}
+        <div style="margin-top:6px;font-size:0.75rem;color:#94a3b8;">EPSG:${epsgCode} · Zone ${def.zone} · GPS: ${r.lat.toFixed(6)}°N, ${r.lon.toFixed(6)}°E</div>
+      `);
+      L.marker([r.lat, r.lon], { icon }).addTo(markersLayer).bindPopup(popup);
+    }
+
+    map.fitBounds(L.latLngBounds(bounds), { padding: [40, 40], maxZoom: 17 });
+  }
 
   // ── Download ──
   downloadBtn.addEventListener('click', () => {
