@@ -3,11 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: https://*.tile.openstreetmap.org https://*.tile.opentopomap.org https://server.arcgisonline.com; connect-src 'none'; font-src 'self'; object-src 'none'; base-uri 'self';">
   <title>SurvComp → gl-Survey Konverter</title>
-  <script src="https://cdn.jsdelivr.net/npm/proj4@2.11.0/dist/proj4.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.min.css">
-  <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/proj4@2.11.0/dist/proj4.js" integrity="sha256-SXX79BH6wYQsW5HTYtMj0/AcoMtSOFouohl5D/qiCoA=" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js" integrity="sha256-uOhwxdKyl3LxDJ+pppPIuJaqyFQO1nAePMYwTGg/69s=" crossorigin="anonymous"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.min.css" integrity="sha256-QZFpF9DkpabUBLoCc7fQJVCmtag/LaVAfAkUJSfuNyY=" crossorigin="anonymous">
+  <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.min.js" integrity="sha256-MgH13bFTTNqsnuEoqNPBLDaqxjGH+lCpqrukmXc8Ppg=" crossorigin="anonymous"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -599,6 +600,15 @@
   const alertText = $('alertText');
 
   // ── Helpers ──
+  function esc(str) {
+    return String(str ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
   function showAlert(msg, type = 'error') {
     alertEl.className = `alert alert-${type} visible`;
     alertText.textContent = msg;
@@ -617,9 +627,13 @@
     }
     if (count === 0) return null;
     const avgLon = sumLon / count;
-    const zone = Math.round(avgLon / 3);
-    const epsg = 5680 + zone;
-    return EPSG_DEFS[epsg] ? { epsg, zone, avgLon: avgLon.toFixed(4) } : null;
+    // Find zone whose central meridian is closest to avgLon
+    let best = null, bestDist = Infinity;
+    for (const [code, def] of Object.entries(EPSG_DEFS)) {
+      const dist = Math.abs(avgLon - def.cm);
+      if (dist < bestDist) { bestDist = dist; best = { epsg: Number(code), zone: def.zone, avgLon }; }
+    }
+    return best;
   }
 
   function formatCoord(val) {
@@ -642,6 +656,11 @@
     }
 
     hideAlert();
+    const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
+    if (file.size > MAX_FILE_SIZE) {
+      showAlert(`Datei zu groß (${(file.size / 1024 / 1024).toFixed(1)} MB). Maximale Größe: 10 MB.`);
+      return;
+    }
     const reader = new FileReader();
     reader.onload = (e) => {
       const text = e.target.result;
@@ -784,12 +803,12 @@
           if (r.warn) tr.style.opacity = '0.5';
           tr.innerHTML = `
             <td class="num">${i + 1}</td>
-            <td><strong>${r.punktnummer}</strong></td>
-            <td class="num">${r.rechtswert}</td>
-            <td class="num">${r.hochwert}</td>
-            <td class="num">${r.hoehe}</td>
-            <td>${r.art}</td>
-            <td>${r.bemerkung}</td>
+            <td><strong>${esc(r.punktnummer)}</strong></td>
+            <td class="num">${esc(r.rechtswert)}</td>
+            <td class="num">${esc(r.hochwert)}</td>
+            <td class="num">${esc(r.hoehe)}</td>
+            <td>${esc(r.art)}</td>
+            <td>${esc(r.bemerkung)}</td>
           `;
           fragment.appendChild(tr);
         });
@@ -869,13 +888,13 @@
     for (const r of validPoints) {
       bounds.push([r.lat, r.lon]);
       const popup = L.popup({ maxWidth: 260 }).setContent(`
-        <div class="popup-title">${r.punktnummer}</div>
-        <div class="popup-row"><span>Rechtswert</span><span>${r.rechtswert}</span></div>
-        <div class="popup-row"><span>Hochwert</span><span>${r.hochwert}</span></div>
-        ${r.hoehe ? `<div class="popup-row"><span>Höhe</span><span>${r.hoehe} m</span></div>` : ''}
-        <div class="popup-row"><span>Art</span><span>${r.art}</span></div>
-        ${r.bemerkung ? `<div class="popup-row"><span>Bemerkung</span><span>${r.bemerkung}</span></div>` : ''}
-        <div style="margin-top:6px;font-size:0.75rem;color:#94a3b8;">EPSG:${epsgCode} · Zone ${def.zone} · GPS: ${r.lat.toFixed(6)}°N, ${r.lon.toFixed(6)}°E</div>
+        <div class="popup-title">${esc(r.punktnummer)}</div>
+        <div class="popup-row"><span>Rechtswert</span><span>${esc(r.rechtswert)}</span></div>
+        <div class="popup-row"><span>Hochwert</span><span>${esc(r.hochwert)}</span></div>
+        ${r.hoehe ? `<div class="popup-row"><span>Höhe</span><span>${esc(r.hoehe)} m</span></div>` : ''}
+        <div class="popup-row"><span>Art</span><span>${esc(r.art)}</span></div>
+        ${r.bemerkung ? `<div class="popup-row"><span>Bemerkung</span><span>${esc(r.bemerkung)}</span></div>` : ''}
+        <div style="margin-top:6px;font-size:0.75rem;color:#94a3b8;">EPSG:${esc(epsgCode)} · Zone ${def.zone} · GPS: ${r.lat.toFixed(6)}°N, ${r.lon.toFixed(6)}°E</div>
       `);
       L.marker([r.lat, r.lon], { icon }).addTo(markersLayer).bindPopup(popup);
     }
@@ -887,7 +906,12 @@
   downloadBtn.addEventListener('click', () => {
     if (!convertedData) return;
 
-    const sep = separatorSelect.value === '\\t' ? '\t' : separatorSelect.value;
+    const sep = (() => {
+      const v = separatorSelect.value;
+      if (v === '\\t') return '\t';
+      if (v === ',') return ',';
+      return ';'; // default / whitelist fallback
+    })();
     const header = ['Punktnummer', 'Rechtswert', 'Hochwert', 'Höhe', 'Art', 'Bemerkung'].join(sep);
     const rows = convertedData.map(r =>
       [r.punktnummer, r.rechtswert, r.hochwert, r.hoehe, r.art, r.bemerkung]

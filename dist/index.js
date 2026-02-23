@@ -38194,9 +38194,13 @@ function detectBestZone(rows) {
   }
   if (count === 0) return null;
   const avgLon = sumLon / count;
-  const zone = Math.round(avgLon / 3);
-  const epsg = 5680 + zone;
-  return EPSG_DEFS[epsg] ? { epsg, zone, avgLon } : null;
+  // Find zone whose central meridian is closest to avgLon
+  let best = null, bestDist = Infinity;
+  for (const [code, def] of Object.entries(EPSG_DEFS)) {
+    const dist = Math.abs(avgLon - def.cm);
+    if (dist < bestDist) { bestDist = dist; best = { epsg: Number(code), zone: def.zone, avgLon }; }
+  }
+  return best;
 }
 
 /**
@@ -40247,6 +40251,30 @@ async function run() {
     const workspace = process.env.GITHUB_WORKSPACE || process.cwd();
     const inputPath = path.resolve(workspace, inputFile);
     const outputPath = path.resolve(workspace, outputFile);
+
+    // Guard against path traversal
+    if (!inputPath.startsWith(workspace + path.sep) && inputPath !== workspace) {
+      core.setFailed(`Sicherheitsfehler: Die Eingabedatei muss sich innerhalb des Workspace befinden.`);
+      return;
+    }
+    if (!outputPath.startsWith(workspace + path.sep) && outputPath !== workspace) {
+      core.setFailed(`Sicherheitsfehler: Die Ausgabedatei muss sich innerhalb des Workspace befinden.`);
+      return;
+    }
+
+    // Validate EPSG input
+    const validEpsg = ['auto', '5681', '5682', '5683', '5684', '5685'];
+    if (!validEpsg.includes(epsgCode)) {
+      core.setFailed(`Ungültiger EPSG-Code: "${epsgCode}". Erlaubt: auto, 5681–5685`);
+      return;
+    }
+
+    // Validate separator
+    const validSeparators = [';', ',', '\t'];
+    if (!validSeparators.includes(separator)) {
+      core.setFailed(`Ungültiges Trennzeichen: "${separator}". Erlaubt: ; , \\t`);
+      return;
+    }
 
     // Validate input file
     if (!fs.existsSync(inputPath)) {
