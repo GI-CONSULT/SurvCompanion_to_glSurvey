@@ -3,6 +3,14 @@
     "https://json.schemastore.org/github-action.json": "action.yml"
   },
   "chat.tools.terminal.autoApprove": {
-    "git pull": true
+    "git pull": true,
+    "/^python -c \"import fiona; print\\(fiona\\.__version__\\)\" 2>&1$/": {
+      "approve": true,
+      "matchCommandLine": true
+    },
+    "/^python -c \"import fiona; ds = fiona\\.open\\(r'assets/2019-01_DB-Netz-MRN_4326 \\(1\\)\\.gpkg'\\); print\\('CRS:', ds\\.crs\\); print\\('Schema:', ds\\.schema\\); print\\('Layers:', fiona\\.listlayers\\(r'assets/2019-01_DB-Netz-MRN_4326 \\(1\\)\\.gpkg'\\)\\); print\\('Count:', len\\(ds\\)\\); print\\('Bounds:', ds\\.bounds\\); f = next\\(iter\\(ds\\)\\); print\\('Sample props:', list\\(f\\['properties'\\]\\.keys\\(\\)\\)\\); print\\('Geom type:', f\\['geometry'\\]\\['type'\\]\\); ds\\.close\\(\\)\"$/": {
+      "approve": true,
+      "matchCommandLine": true
+    }
   }
 }

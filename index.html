@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: https://*.tile.openstreetmap.org https://*.tile.opentopomap.org https://server.arcgisonline.com; connect-src 'none'; font-src 'self'; object-src 'none'; base-uri 'self';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: https://*.tile.openstreetmap.org https://*.tile.opentopomap.org https://server.arcgisonline.com; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'self';">
   <title>SurvComp → gl-Survey Konverter</title>
   <script src="https://cdn.jsdelivr.net/npm/proj4@2.11.0/dist/proj4.js" integrity="sha256-SXX79BH6wYQsW5HTYtMj0/AcoMtSOFouohl5D/qiCoA=" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js" integrity="sha256-uOhwxdKyl3LxDJ+pppPIuJaqyFQO1nAePMYwTGg/69s=" crossorigin="anonymous"></script>
@@ -500,6 +500,25 @@
     .map-tiles-btn:hover { border-color: var(--primary-light); color: var(--primary); }
     .map-tiles-btn.active { background: var(--primary-bg); border-color: var(--primary-light); color: var(--primary); }
 
+    /* ── Rail overlay toggle ── */
+    .map-overlay-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.35rem 0.75rem;
+      font-size: 0.78rem;
+      font-weight: 500;
+      font-family: inherit;
+      background: var(--surface);
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      color: var(--text-secondary);
+      transition: all var(--transition);
+    }
+    .map-overlay-btn:hover { border-color: var(--danger); color: var(--danger); }
+    .map-overlay-btn.active { background: #fef2f2; border-color: var(--danger); color: var(--danger); }
+
     /* ── Footer ── */
     .footer {
       text-align: center;
@@ -642,10 +661,15 @@
     <div class="card map-card">
       <div class="map-header">
         <div class="card-title">Lageprüfung &mdash; Transformierte Punkte</div>
-        <div style="display:flex;gap:0.5rem;">
+        <div style="display:flex;gap:0.5rem;align-items:center;">
           <button class="map-tiles-btn active" id="btnOsm">OSM</button>
           <button class="map-tiles-btn" id="btnSat">Satellit</button>
           <button class="map-tiles-btn" id="btnTopo">Topo</button>
+          <span style="width:1px;height:20px;background:var(--border);margin:0 0.25rem;"></span>
+          <button class="map-overlay-btn" id="btnRail" title="DB-Streckennetz ein-/ausblenden">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
+            Streckennetz
+          </button>
         </div>
       </div>
       <div id="mapContainer"></div>
@@ -1074,6 +1098,68 @@
     $('btnOsm').addEventListener('click', () => switchTiles('osm'));
     $('btnSat').addEventListener('click', () => switchTiles('sat'));
     $('btnTopo').addEventListener('click', () => switchTiles('topo'));
+    $('btnRail').addEventListener('click', toggleRailNetwork);
+  }
+
+  // ── Rail network overlay ──
+  let railLayer = null;
+  let railLoaded = false;
+  let railVisible = false;
+
+  async function toggleRailNetwork() {
+    const btn = $('btnRail');
+    if (!map) return;
+
+    if (!railLoaded) {
+      btn.textContent = 'Lade…';
+      btn.disabled = true;
+      try {
+        const resp = await fetch('assets/db_streckennetz.geojson');
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const geojson = await resp.json();
+        railLayer = L.geoJSON(geojson, {
+          style: (feature) => {
+            const art = (feature.properties.bahnart || '').toLowerCase();
+            const isHaupt = art.includes('hauptbahn') || art.includes('fernbahn');
+            return {
+              color: '#dc2626',
+              weight: isHaupt ? 3 : 1.5,
+              opacity: isHaupt ? 0.8 : 0.5,
+              dashArray: isHaupt ? null : '6 4',
+            };
+          },
+          onEachFeature: (feature, layer) => {
+            const p = feature.properties;
+            layer.bindPopup(`
+              <div class="popup-title">Strecke ${p.strecke_nr}</div>
+              <div class="popup-row"><span>Kurzname</span><span>${esc(p.strecke_ku)}</span></div>
+              <div class="popup-row"><span>Bahnart</span><span>${esc(p.bahnart)}</span></div>
+              <div class="popup-row"><span>Elektrifiz.</span><span>${esc(p.elektrifiz)}</span></div>
+              <div class="popup-row"><span>Gleise</span><span>${esc(p.gleisanzah)}</span></div>
+              <div class="popup-row"><span>km</span><span>${esc(p.von_km_l)} – ${esc(p.bis_km_l)}</span></div>
+            `, { maxWidth: 280 });
+          },
+        });
+        railLoaded = true;
+      } catch (err) {
+        btn.textContent = 'Streckennetz';
+        btn.disabled = false;
+        showAlert('Streckennetz konnte nicht geladen werden: ' + err.message);
+        return;
+      }
+      btn.disabled = false;
+    }
+
+    railVisible = !railVisible;
+    if (railVisible) {
+      railLayer.addTo(map);
+      btn.classList.add('active');
+      btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg> Streckennetz';
+    } else {
+      map.removeLayer(railLayer);
+      btn.classList.remove('active');
+      btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg> Streckennetz';
+    }
   }
 
   function switchTiles(name) {
