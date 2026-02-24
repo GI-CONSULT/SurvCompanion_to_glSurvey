@@ -663,11 +663,11 @@
 
   // ── Proj4 Definitions (DB_REF / 3-degree Gauss-Krüger) ──
   const EPSG_DEFS = {
-    5681: { zone: 1, cm: 3,  proj4: '+proj=tmerc +lat_0=0 +lon_0=3  +k=1 +x_0=1500000 +y_0=0 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs' },
-    5682: { zone: 2, cm: 6,  proj4: '+proj=tmerc +lat_0=0 +lon_0=6  +k=1 +x_0=2500000 +y_0=0 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs' },
-    5683: { zone: 3, cm: 9,  proj4: '+proj=tmerc +lat_0=0 +lon_0=9  +k=1 +x_0=3500000 +y_0=0 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs' },
-    5684: { zone: 4, cm: 12, proj4: '+proj=tmerc +lat_0=0 +lon_0=12 +k=1 +x_0=4500000 +y_0=0 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs' },
-    5685: { zone: 5, cm: 15, proj4: '+proj=tmerc +lat_0=0 +lon_0=15 +k=1 +x_0=5500000 +y_0=0 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs' },
+    5681: { zone: 1, cm: 3,  proj4: '+proj=tmerc +lat_0=0 +lon_0=3  +k=1 +x_0=1500000 +y_0=0 +ellps=bessel +towgs84=0,0,0,0,0,0,0 +units=m +no_defs' },
+    5682: { zone: 2, cm: 6,  proj4: '+proj=tmerc +lat_0=0 +lon_0=6  +k=1 +x_0=2500000 +y_0=0 +ellps=bessel +towgs84=0,0,0,0,0,0,0 +units=m +no_defs' },
+    5683: { zone: 3, cm: 9,  proj4: '+proj=tmerc +lat_0=0 +lon_0=9  +k=1 +x_0=3500000 +y_0=0 +ellps=bessel +towgs84=0,0,0,0,0,0,0 +units=m +no_defs' },
+    5684: { zone: 4, cm: 12, proj4: '+proj=tmerc +lat_0=0 +lon_0=12 +k=1 +x_0=4500000 +y_0=0 +ellps=bessel +towgs84=0,0,0,0,0,0,0 +units=m +no_defs' },
+    5685: { zone: 5, cm: 15, proj4: '+proj=tmerc +lat_0=0 +lon_0=15 +k=1 +x_0=5500000 +y_0=0 +ellps=bessel +towgs84=0,0,0,0,0,0,0 +units=m +no_defs' },
   };
 
   // Register all EPSG codes with proj4
@@ -977,7 +977,7 @@
 
           const [easting, northing] = proj4('EPSG:4326', targetProj, [lon, lat]);
 
-          // Back-transform: GK → WGS84, compare with original input
+          // Back-transform: GK → WGS84 for map display & round-trip validation
           const [backLon, backLat] = proj4(targetProj, 'EPSG:4326', [easting, northing]);
           const dN_m = (backLat - lat) * 111111;
           const dE_m = (backLon - lon) * 111111 * Math.cos(lat * Math.PI / 180);
@@ -995,6 +995,7 @@
             bemerkung,
             warn: false,
             lat, lon,
+            backLat, backLon,
             delta: delta_mm,
             codeOptions: codeOpts,
             selectedCode: defaultCode,
@@ -1087,7 +1088,7 @@
     map.invalidateSize(); // ensure container size is re-measured after visibility change
     markersLayer.clearLayers();
 
-    const validPoints = results.filter(r => r.lat !== null);
+    const validPoints = results.filter(r => r.backLat != null);
     if (validPoints.length === 0) return;
 
     const def = EPSG_DEFS[epsgCode];
@@ -1101,8 +1102,9 @@
 
     const bounds = [];
     for (const r of validPoints) {
-      bounds.push([r.lat, r.lon]);
-      const popup = L.popup({ maxWidth: 260 }).setContent(`
+      // Use back-transformed coordinates (GK→WGS84) so transformation errors are visible on map
+      bounds.push([r.backLat, r.backLon]);
+      const popup = L.popup({ maxWidth: 280 }).setContent(`
         <div class="popup-title">${esc(r.punktnummer)}</div>
         <div class="popup-row"><span>Rechtswert</span><span>${esc(r.rechtswert)}</span></div>
         <div class="popup-row"><span>Hochwert</span><span>${esc(r.hochwert)}</span></div>
@@ -1110,9 +1112,11 @@
         <div class="popup-row"><span>Art</span><span>${esc(r.art)}${r.selectedCode != null ? ' → ' + r.selectedCode : ''}</span></div>
         ${r.bemerkung ? `<div class="popup-row"><span>Bemerkung</span><span>${esc(r.bemerkung)}</span></div>` : ''}
         ${r.delta != null ? `<div class="popup-row"><span>Δ Rücktransf.</span><span class="${r.delta < 1 ? 'delta-ok' : r.delta < 10 ? 'delta-warn' : 'delta-err'}">${r.delta.toFixed(3)} mm</span></div>` : ''}
-        <div style="margin-top:6px;font-size:0.75rem;color:#94a3b8;">EPSG:${esc(epsgCode)} · Zone ${def.zone} · GPS: ${r.lat.toFixed(6)}°N, ${r.lon.toFixed(6)}°E</div>
+        <div style="margin-top:6px;font-size:0.75rem;color:#94a3b8;">EPSG:${esc(epsgCode)} · Zone ${def.zone}</div>
+        <div style="font-size:0.75rem;color:#94a3b8;">GPS: ${r.lat.toFixed(6)}°N, ${r.lon.toFixed(6)}°E</div>
+        <div style="font-size:0.75rem;color:#94a3b8;">GK→WGS84: ${r.backLat.toFixed(6)}°N, ${r.backLon.toFixed(6)}°E</div>
       `);
-      L.marker([r.lat, r.lon], { icon }).addTo(markersLayer).bindPopup(popup);
+      L.marker([r.backLat, r.backLon], { icon }).addTo(markersLayer).bindPopup(popup);
     }
 
     map.fitBounds(L.latLngBounds(bounds), { padding: [40, 40], maxZoom: 17 });

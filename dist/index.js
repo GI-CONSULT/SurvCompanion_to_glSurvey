@@ -38169,11 +38169,11 @@ const Papa = __nccwpck_require__(8728);
  * DB_REF / 3-degree Gauss-Krüger zone definitions (EPSG:5681–5685)
  */
 const EPSG_DEFS = {
-  5681: { zone: 1, cm: 3,  proj4: '+proj=tmerc +lat_0=0 +lon_0=3  +k=1 +x_0=1500000 +y_0=0 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs' },
-  5682: { zone: 2, cm: 6,  proj4: '+proj=tmerc +lat_0=0 +lon_0=6  +k=1 +x_0=2500000 +y_0=0 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs' },
-  5683: { zone: 3, cm: 9,  proj4: '+proj=tmerc +lat_0=0 +lon_0=9  +k=1 +x_0=3500000 +y_0=0 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs' },
-  5684: { zone: 4, cm: 12, proj4: '+proj=tmerc +lat_0=0 +lon_0=12 +k=1 +x_0=4500000 +y_0=0 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs' },
-  5685: { zone: 5, cm: 15, proj4: '+proj=tmerc +lat_0=0 +lon_0=15 +k=1 +x_0=5500000 +y_0=0 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs' },
+  5681: { zone: 1, cm: 3,  proj4: '+proj=tmerc +lat_0=0 +lon_0=3  +k=1 +x_0=1500000 +y_0=0 +ellps=bessel +towgs84=0,0,0,0,0,0,0 +units=m +no_defs' },
+  5682: { zone: 2, cm: 6,  proj4: '+proj=tmerc +lat_0=0 +lon_0=6  +k=1 +x_0=2500000 +y_0=0 +ellps=bessel +towgs84=0,0,0,0,0,0,0 +units=m +no_defs' },
+  5683: { zone: 3, cm: 9,  proj4: '+proj=tmerc +lat_0=0 +lon_0=9  +k=1 +x_0=3500000 +y_0=0 +ellps=bessel +towgs84=0,0,0,0,0,0,0 +units=m +no_defs' },
+  5684: { zone: 4, cm: 12, proj4: '+proj=tmerc +lat_0=0 +lon_0=12 +k=1 +x_0=4500000 +y_0=0 +ellps=bessel +towgs84=0,0,0,0,0,0,0 +units=m +no_defs' },
+  5685: { zone: 5, cm: 15, proj4: '+proj=tmerc +lat_0=0 +lon_0=15 +k=1 +x_0=5500000 +y_0=0 +ellps=bessel +towgs84=0,0,0,0,0,0,0 +units=m +no_defs' },
 };
 
 // Register definitions
@@ -38219,19 +38219,26 @@ function parseCSV(csvText) {
 
   if (result.errors.length > 0 && result.data.length === 0) {
     errors.push(`CSV-Parsing-Fehler: ${result.errors[0].message}`);
-    return { data: [], errors };
+    return { data: [], errors, hints: [] };
   }
 
-  const required = ['punkt_id', 'gps_latitude', 'gps_longitude', 'hoehe', 'art'];
+  const critical = ['punkt_id', 'gps_latitude', 'gps_longitude'];
   const headers = result.meta.fields || [];
-  const missing = required.filter(h => !headers.includes(h));
+  const missing = critical.filter(h => !headers.includes(h));
   if (missing.length > 0) {
-    errors.push(`Fehlende Spalten: ${missing.join(', ')}`);
-    return { data: [], errors };
+    errors.push(`Fehlende Pflichtspalten: ${missing.join(', ')}. Ist das eine SurvComp-Datei?`);
+    return { data: [], errors, hints: [] };
+  }
+
+  const hints = [];
+  const optional = ['hoehe', 'art', 'bemerkungen'];
+  const missingOptional = optional.filter(h => !headers.includes(h));
+  if (missingOptional.length > 0) {
+    hints.push(`Optionale Spalten fehlen: ${missingOptional.join(', ')} — Standardwerte werden verwendet.`);
   }
 
   const data = result.data.filter(row => row.punkt_id && row.punkt_id.trim());
-  return { data, errors };
+  return { data, errors, hints };
 }
 
 /**
@@ -38255,6 +38262,7 @@ function convertPoints(rows, epsgCode) {
     const lat = parseFloat(row.gps_latitude);
     const lon = parseFloat(row.gps_longitude);
     const hoehe = row.hoehe ? parseFloat(row.hoehe) : NaN;
+    const artRaw = (row.art || '').trim();
     const bemerkung = (row.bemerkungen || '').trim().replace(/\r?\n/g, ' ');
 
     if (isNaN(lat) || isNaN(lon)) {
@@ -38264,7 +38272,7 @@ function convertPoints(rows, epsgCode) {
         Rechtswert: '',
         Hochwert: '',
         'Höhe': !isNaN(hoehe) ? hoehe.toFixed(3) : '',
-        Art: row.art || '',
+        Art: artRaw,
         Bemerkung: bemerkung,
       });
       continue;
@@ -38277,7 +38285,7 @@ function convertPoints(rows, epsgCode) {
       Rechtswert: easting.toFixed(3),
       Hochwert: northing.toFixed(3),
       'Höhe': !isNaN(hoehe) ? hoehe.toFixed(3) : '',
-      Art: row.art || '',
+      Art: artRaw,
       Bemerkung: bemerkung,
     });
   }
@@ -40286,10 +40294,14 @@ async function run() {
     const csvText = fs.readFileSync(inputPath, 'utf-8');
 
     // Parse CSV
-    const { data, errors } = parseCSV(csvText);
+    const { data, errors, hints } = parseCSV(csvText);
     if (errors.length > 0) {
       core.setFailed(errors.join('; '));
       return;
+    }
+
+    if (hints.length > 0) {
+      hints.forEach(h => core.warning(`Hinweis: ${h}`));
     }
 
     core.info(`${data.length} Vermessungspunkte eingelesen.`);
