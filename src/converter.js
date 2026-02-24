@@ -5,11 +5,11 @@ const Papa = require('papaparse');
  * DB_REF / 3-degree Gauss-Krüger zone definitions (EPSG:5681–5685)
  */
 const EPSG_DEFS = {
-  5681: { zone: 1, cm: 3,  proj4: '+proj=tmerc +lat_0=0 +lon_0=3  +k=1 +x_0=1500000 +y_0=0 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs' },
-  5682: { zone: 2, cm: 6,  proj4: '+proj=tmerc +lat_0=0 +lon_0=6  +k=1 +x_0=2500000 +y_0=0 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs' },
-  5683: { zone: 3, cm: 9,  proj4: '+proj=tmerc +lat_0=0 +lon_0=9  +k=1 +x_0=3500000 +y_0=0 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs' },
-  5684: { zone: 4, cm: 12, proj4: '+proj=tmerc +lat_0=0 +lon_0=12 +k=1 +x_0=4500000 +y_0=0 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs' },
-  5685: { zone: 5, cm: 15, proj4: '+proj=tmerc +lat_0=0 +lon_0=15 +k=1 +x_0=5500000 +y_0=0 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs' },
+  5681: { zone: 1, cm: 3,  proj4: '+proj=tmerc +lat_0=0 +lon_0=3  +k=1 +x_0=1500000 +y_0=0 +ellps=bessel +towgs84=0,0,0,0,0,0,0 +units=m +no_defs' },
+  5682: { zone: 2, cm: 6,  proj4: '+proj=tmerc +lat_0=0 +lon_0=6  +k=1 +x_0=2500000 +y_0=0 +ellps=bessel +towgs84=0,0,0,0,0,0,0 +units=m +no_defs' },
+  5683: { zone: 3, cm: 9,  proj4: '+proj=tmerc +lat_0=0 +lon_0=9  +k=1 +x_0=3500000 +y_0=0 +ellps=bessel +towgs84=0,0,0,0,0,0,0 +units=m +no_defs' },
+  5684: { zone: 4, cm: 12, proj4: '+proj=tmerc +lat_0=0 +lon_0=12 +k=1 +x_0=4500000 +y_0=0 +ellps=bessel +towgs84=0,0,0,0,0,0,0 +units=m +no_defs' },
+  5685: { zone: 5, cm: 15, proj4: '+proj=tmerc +lat_0=0 +lon_0=15 +k=1 +x_0=5500000 +y_0=0 +ellps=bessel +towgs84=0,0,0,0,0,0,0 +units=m +no_defs' },
 };
 
 // Register definitions
