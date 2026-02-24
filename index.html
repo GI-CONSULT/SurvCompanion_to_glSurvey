@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: https://*.tile.openstreetmap.org https://*.tile.opentopomap.org https://server.arcgisonline.com; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'self';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: https://*.tile.openstreetmap.org https://*.tile.opentopomap.org https://server.arcgisonline.com; connect-src 'self' https://cdn.jsdelivr.net; font-src 'self'; object-src 'none'; base-uri 'self';">
   <title>SurvComp → gl-Survey Konverter</title>
   <script src="https://cdn.jsdelivr.net/npm/proj4@2.11.0/dist/proj4.js" integrity="sha256-SXX79BH6wYQsW5HTYtMj0/AcoMtSOFouohl5D/qiCoA=" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js" integrity="sha256-uOhwxdKyl3LxDJ+pppPIuJaqyFQO1nAePMYwTGg/69s=" crossorigin="anonymous"></script>
@@ -1115,8 +1115,10 @@
       btn.disabled = true;
       try {
         const resp = await fetch('assets/db_streckennetz.geojson');
+        console.log('Streckennetz fetch status:', resp.status, resp.statusText);
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const geojson = await resp.json();
+        console.log('Streckennetz geladen:', geojson.features.length, 'Features');
         railLayer = L.geoJSON(geojson, {
           style: (feature) => {
             const art = (feature.properties.bahnart || '').toLowerCase();
@@ -1142,6 +1144,7 @@
         });
         railLoaded = true;
       } catch (err) {
+        console.error('Streckennetz Fehler:', err);
         btn.textContent = 'Streckennetz';
         btn.disabled = false;
         showAlert('Streckennetz konnte nicht geladen werden: ' + err.message);
