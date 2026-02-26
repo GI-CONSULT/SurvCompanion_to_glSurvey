@@ -801,6 +801,9 @@
       return;
     }
     const reader = new FileReader();
+    reader.onerror = () => {
+      showAlert('Datei konnte nicht gelesen werden. Bitte erneut versuchen.');
+    };
     reader.onload = (e) => {
       const text = e.target.result;
       const result = Papa.parse(text, {
@@ -1115,10 +1118,8 @@
       btn.disabled = true;
       try {
         const resp = await fetch('assets/db_streckennetz.geojson');
-        console.log('Streckennetz fetch status:', resp.status, resp.statusText);
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const geojson = await resp.json();
-        console.log('Streckennetz geladen:', geojson.features.length, 'Features');
         railLayer = L.geoJSON(geojson, {
           style: (feature) => {
             const art = (feature.properties.bahnart || '').toLowerCase();
